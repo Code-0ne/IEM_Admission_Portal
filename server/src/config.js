@@ -5,12 +5,12 @@ dotenv.config();
 export const config = {
   port: Number(process.env.PORT) || 5000,
   nodeEnv: process.env.NODE_ENV || 'development',
-  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+  clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5175',
 
   supabase: {
     url: process.env.SUPABASE_URL || '',
-    anonKey: process.env.SUPABASE_ANON_KEY || '',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    anonKey: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '',
     databaseUrl: process.env.DATABASE_URL || '',
   },
 
@@ -24,13 +24,6 @@ export const config = {
     tokenSecret: process.env.TOKEN_SECRET || 'dev-token-secret',
     lockoutAttempts: 5,
     lockoutDurationMinutes: 15,
-  },
-
-  email: {
-    host: process.env.SMTP_HOST || 'smtp.example.com',
-    port: Number(process.env.SMTP_PORT) || 587,
-    user: process.env.SMTP_USER || 'noreply@iem.edu.in',
-    pass: process.env.SMTP_PASS || '',
   },
 
   payment: {

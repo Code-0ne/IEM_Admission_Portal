@@ -2547,6 +2547,9 @@ function AppContent() {
   const auth = useAuth();
   const [page, setPage] = useState(() => {
     try {
+      if (window.location.pathname.replace(/\/+$/, '') === '/reset-password') {
+        return 'forgot';
+      }
       return window.localStorage.getItem('iem_cached_user') ? 'dashboard' : 'home';
     } catch {
       return 'home';
@@ -2718,9 +2721,10 @@ function AppContent() {
     return <main className="admin-entry__loading" aria-live="polite">Restoring your session…</main>;
   }
 
-  const register = () => {
-    notify('Account created. You can now sign in.', { type: 'success', link: 'login' });
-    setPage('login');
+  const register = (verifiedUser) => {
+    setUser(verifiedUser);
+    notify('Email verified. Your account is ready.', { type: 'success', link: 'dashboard' });
+    setPage('dashboard');
   };
 
   const login = (account) => {

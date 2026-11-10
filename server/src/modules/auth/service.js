@@ -8,7 +8,7 @@ import {
   ConflictError,
   NotFoundError,
 } from '../../errors.js';
-import { getSupabaseClient } from '../../db/supabase.js';
+import { createSupabaseAuthClient, getSupabaseClient } from '../../db/supabase.js';
 
 // Salt rounds for password hashing
 const SALT_ROUNDS = 10;
@@ -91,6 +91,27 @@ export function sanitizeUser(user) {
 }
 
 export class AuthService {
+  async createSession(client, user) {
+    const now = new Date();
+    const rawSessionToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashSessionToken(rawSessionToken);
+    const { data: session, error } = await client
+      .from('sessions')
+      .insert({
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: new Date(now.getTime() + config.auth.sessionMaxAgeMs).toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestError(`Account created, but a session could not be created: ${error.message}`);
+    }
+
+    return { token: rawSessionToken, user: sanitizeUser(user), session };
+  }
+
   /**
    * Register a new applicant
    */
@@ -125,15 +146,43 @@ export class AuthService {
         throw new ConflictError('An account with this mobile number already exists');
       }
 
-      const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+      if (!config.supabase.serviceRoleKey) {
+        throw new BadRequestError('Supabase service-role credentials are required to create accounts.');
+      }
+
+      const authClient = createSupabaseAuthClient();
+      if (!authClient) {
+        throw new BadRequestError('Supabase Auth is not configured.');
+      }
+
+      const { data: authResult, error: authError } = await authClient.auth.signUp({
+        email: normalizedEmail,
+        password,
+        user_metadata: { full_name: fullName.trim() },
+      });
+
+      if (authError || !authResult?.user) {
+        throw new BadRequestError(`Registration failed: ${authError?.message || 'Supabase Auth did not create the account.'}`);
+      }
+      if (authResult.user.identities?.length === 0) {
+        throw new ConflictError('An account with this email address already exists');
+      }
+      if (!authResult.session && !authResult.user.email_confirmed_at) {
+        const { error: deleteError } = await client.auth.admin.deleteUser(authResult.user.id);
+        if (deleteError) {
+          console.error('Could not remove a signup requiring email confirmation:', deleteError.message);
+        }
+        throw new BadRequestError('Email confirmation is enabled in Supabase. Disable it to allow account registration without email verification.');
+      }
+
       const { data: newUser, error: insertError } = await client
         .from('users')
         .insert({
+          auth_user_id: authResult.user.id,
           full_name: fullName.trim(),
           email: normalizedEmail,
           country_code: cleanCountryCode,
           mobile: cleanMobile,
-          password_hash: passwordHash,
           role: 'applicant', // Force default role
           is_verified: true,
           consent: Boolean(consent),
@@ -142,10 +191,15 @@ export class AuthService {
         .single();
 
       if (insertError) {
+        const { error: rollbackError } = await client.auth.admin.deleteUser(authResult.user.id);
+        if (rollbackError) {
+          console.error('Failed to remove Supabase Auth user after registration error:', rollbackError.message);
+        }
         throw new BadRequestError(`Registration failed: ${insertError.message}`);
       }
 
-      return { user: sanitizeUser(newUser) };
+      const session = await this.createSession(client, newUser);
+      return { user: session.user, token: session.token };
     }
 
     // --- In-memory Store Fallback ---
@@ -181,7 +235,8 @@ export class AuthService {
     inMemoryStore.usersByEmail.set(normalizedEmail, userId);
     inMemoryStore.usersByPhone.set(phoneKey, userId);
 
-    return { user: sanitizeUser(newUser) };
+    const session = await this.login({ identifier: normalizedEmail, password });
+    return { user: session.user, token: session.token };
   }
 
   /**
@@ -210,7 +265,6 @@ export class AuthService {
       if (!user) {
         throw new UnauthorizedError('Invalid email/mobile or password');
       }
-
       // Lockout check
       if (user.locked_until && new Date(user.locked_until) > now) {
         const remainingMinutes = Math.ceil((new Date(user.locked_until).getTime() - now.getTime()) / 60000);
@@ -219,8 +273,20 @@ export class AuthService {
         );
       }
 
-      const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-      if (!isPasswordValid) {
+      if (!user.auth_user_id) {
+        throw new UnauthorizedError('Account setup is incomplete. Please contact admissions support.');
+      }
+
+      const authClient = createSupabaseAuthClient();
+      if (!authClient) {
+        throw new BadRequestError('Supabase Auth is not configured.');
+      }
+
+      const { data: authResult, error: authError } = await authClient.auth.signInWithPassword({
+        email: user.email,
+        password,
+      });
+      if (authError || authResult?.user?.id !== user.auth_user_id) {
         const nextAttempts = (user.failed_login_attempts || 0) + 1;
         const updates = { failed_login_attempts: nextAttempts };
 
@@ -228,30 +294,40 @@ export class AuthService {
           updates.locked_until = new Date(now.getTime() + config.auth.lockoutDurationMinutes * 60 * 1000).toISOString();
         }
 
-        await client.from('users').update(updates).eq('id', user.id);
+        const { error: updateError } = await client.from('users').update(updates).eq('id', user.id);
+        if (updateError) {
+          console.error('Failed to update failed-login counter:', updateError.message);
+        }
         throw new UnauthorizedError('Invalid email/mobile or password');
       }
 
       // Reset login counters on success
-      await client
+      const { error: counterError } = await client
         .from('users')
         .update({
           failed_login_attempts: 0,
           locked_until: null,
+          is_verified: true,
           updated_at: now.toISOString(),
         })
         .eq('id', user.id);
+      if (counterError) {
+        throw new BadRequestError(`Could not reset login counters: ${counterError.message}`);
+      }
 
       // Create session
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = hashSessionToken(rawToken);
       const sessionExpiry = new Date(now.getTime() + config.auth.sessionMaxAgeMs).toISOString();
 
-      await client.from('sessions').insert({
+      const { error: sessionError } = await client.from('sessions').insert({
         user_id: user.id,
         token_hash: tokenHash,
         expires_at: sessionExpiry,
       });
+      if (sessionError) {
+        throw new BadRequestError(`Could not create session: ${sessionError.message}`);
+      }
 
       return {
         token: rawToken,
@@ -277,7 +353,6 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedError('Invalid email/mobile or password');
     }
-
     // Check lockout
     if (user.locked_until && new Date(user.locked_until) > now) {
       const remainingMinutes = Math.ceil((new Date(user.locked_until).getTime() - now.getTime()) / 60000);
@@ -396,37 +471,29 @@ export class AuthService {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const otpCode = generateOtpCode();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const now = new Date().toISOString();
-
     const client = getSupabaseClient();
     if (client) {
-      const { data: user } = await client.from('users').select('id').eq('email', normalizedEmail).maybeSingle();
-      if (!user) {
-        // Neutral response to prevent account enumeration
-        return {
-          success: true,
-          message: 'If an account exists with this email, a password reset code has been sent.',
-        };
+      const authClient = createSupabaseAuthClient();
+      if (!authClient) {
+        throw new BadRequestError('Supabase Auth is not configured.');
       }
 
-      // Invalidate old password reset OTPs
-      await client.from('otps').delete().eq('user_id', user.id).eq('purpose', 'password_reset');
-
-      await client.from('otps').insert({
-        user_id: user.id,
-        otp_hash: hashOtp(otpCode),
-        purpose: 'password_reset',
-        expires_at: expiresAt,
+      const { error } = await authClient.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: new URL('/reset-password', config.clientOrigin).toString(),
       });
+      if (error) {
+        throw new BadRequestError(`Could not request password reset: ${error.message}`);
+      }
 
       return {
         success: true,
-        message: 'If an account exists with this email, a password reset code has been sent.',
-        otpCode: config.nodeEnv === 'development' || config.nodeEnv === 'test' ? otpCode : undefined,
+        message: 'If an account exists with this email, a password reset link has been sent.',
       };
     }
+
+    const otpCode = generateOtpCode();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
 
     // In-memory fallback
     const userId = inMemoryStore.usersByEmail.get(normalizedEmail);
@@ -465,8 +532,71 @@ export class AuthService {
   /**
    * Reset password with OTP and revoke all existing sessions
    */
-  async resetPassword({ email, otp, newPassword }) {
-    if (!email || !otp || !newPassword) {
+  async resetPassword({ accessToken, email, otp, newPassword }) {
+    if (!newPassword) {
+      throw new BadRequestError('New password is required');
+    }
+
+    const client = getSupabaseClient();
+    if (client) {
+      if (!accessToken) {
+        throw new BadRequestError('Password reset authorization is required');
+      }
+
+      const authClient = createSupabaseAuthClient();
+      if (!authClient) {
+        throw new BadRequestError('Supabase Auth is not configured.');
+      }
+      if (!config.supabase.serviceRoleKey) {
+        throw new BadRequestError('Supabase service-role credentials are required to reset passwords.');
+      }
+
+      const { data: authResult, error: authError } = await authClient.auth.getUser(accessToken);
+      if (authError || !authResult.user) {
+        throw new BadRequestError('Password reset link is invalid or has expired. Request a new link.');
+      }
+
+      const { data: user, error: lookupError } = await client
+        .from('users')
+        .select('id')
+        .eq('auth_user_id', authResult.user.id)
+        .maybeSingle();
+      if (lookupError) {
+        throw new BadRequestError(`Could not load the account for password reset: ${lookupError.message}`);
+      }
+      if (!user) {
+        throw new NotFoundError('No application account is linked to this Supabase Auth user.');
+      }
+
+      const { error: passwordError } = await client.auth.admin.updateUserById(authResult.user.id, {
+        password: newPassword,
+      });
+      if (passwordError) {
+        throw new BadRequestError(`Could not update password: ${passwordError.message}`);
+      }
+
+      const { error: sessionsError } = await client.from('sessions').delete().eq('user_id', user.id);
+      if (sessionsError) {
+        throw new BadRequestError(`Password changed, but existing sessions could not be revoked: ${sessionsError.message}`);
+      }
+
+      const { error: profileError } = await client
+        .from('users')
+        .update({
+          failed_login_attempts: 0,
+          locked_until: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+      if (profileError) {
+        throw new BadRequestError(`Password changed, but account login status could not be reset: ${profileError.message}`);
+      }
+
+      return { success: true, message: 'Password has been reset successfully. Please log in.' };
+    }
+
+    // In-memory fallback
+    if (!email || !otp) {
       throw new BadRequestError('Email, reset code, and new password are required');
     }
 
@@ -474,59 +604,6 @@ export class AuthService {
     const cleanOtp = otp.trim();
     const expectedHash = hashOtp(cleanOtp);
     const now = new Date();
-
-    const client = getSupabaseClient();
-    if (client) {
-      const { data: user } = await client.from('users').select('id').eq('email', normalizedEmail).maybeSingle();
-      if (!user) {
-        throw new NotFoundError('User not found');
-      }
-
-      const { data: activeOtps } = await client
-        .from('otps')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('purpose', 'password_reset')
-        .gt('expires_at', now.toISOString())
-        .order('created_at', { ascending: false });
-
-      const otpRecord = activeOtps?.[0];
-      if (!otpRecord) {
-        throw new BadRequestError('Reset code has expired or does not exist');
-      }
-
-      if (otpRecord.attempts >= 5) {
-        throw new BadRequestError('Too many invalid attempts. Please request a new reset code.');
-      }
-
-      if (otpRecord.otp_hash !== expectedHash) {
-        await client.from('otps').update({ attempts: otpRecord.attempts + 1 }).eq('id', otpRecord.id);
-        throw new BadRequestError('Invalid reset code');
-      }
-
-      const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-
-      // Update password
-      await client
-        .from('users')
-        .update({
-          password_hash: passwordHash,
-          failed_login_attempts: 0,
-          locked_until: null,
-          updated_at: now.toISOString(),
-        })
-        .eq('id', user.id);
-
-      // Revoke all existing sessions for this user
-      await client.from('sessions').delete().eq('user_id', user.id);
-
-      // Delete used OTP
-      await client.from('otps').delete().eq('id', otpRecord.id);
-
-      return { success: true, message: 'Password has been reset successfully. Please log in.' };
-    }
-
-    // In-memory fallback
     const userId = inMemoryStore.usersByEmail.get(normalizedEmail);
     if (!userId) {
       throw new NotFoundError('User not found');

@@ -61,12 +61,18 @@ npm run build --prefix .\client
 
 ## Database setup
 
-The initial schema is in `server\src\db\migrations\001_initial_schema.sql`. The `npm run migrate --prefix .\server` command prepares/loads the schema SQL; apply that SQL through the Supabase SQL editor or your database administration workflow. The API can use an in-memory fallback for local/test operation, but that data is not persistent.
+Database migrations are in `server\src\db\migrations`. Apply the numbered SQL files in order through the target Supabase SQL Editor. `npm run migrate --prefix .\server` checks and loads the migration SQL for the application; it does not execute DDL against Supabase. The API can use an in-memory fallback for local/test operation, but that data is not persistent.
+
+Authentication uses Supabase Auth for password verification and password-reset email. Disable email confirmations in Supabase **Authentication → Providers → Email** to let new users register and sign in without email verification. Configure email delivery in Supabase **Authentication → SMTP Settings**; SMTP credentials are not stored in the application `.env`.
+
+After applying the migrations, run `npm run migrate:auth-users --prefix .\server` once to link existing application profiles to Supabase Auth; existing applicants will need to use **Forgot password** to set a new password. Configure the application URL and `/reset-password` redirect URL in Supabase **Authentication → URL Configuration**.
+
+Keep `SUPABASE_SECRET_KEY` server-side only. The publishable key is used for public Auth operations; the secret key is used by the API to manage Auth accounts.
 
 ## Payment note
 
 The current **Pay now** action is a development-only simulated payment. It records a demo receipt and updates an approved application, but does not transfer money or connect to a real payment gateway. Configure and implement server-side gateway verification before accepting real payments.
 
-## Account verification
+## Account registration
 
-Email OTP verification is not required for registration. Newly created accounts can sign in immediately. OTP remains in use for password recovery.
+New accounts can sign in immediately after registration. Password recovery uses a Supabase Auth email link.

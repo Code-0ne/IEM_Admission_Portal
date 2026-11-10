@@ -43,6 +43,10 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const res = await http.post('/auth/register', payload);
+    if (res?.user) {
+      setUser(res.user);
+      window.localStorage.setItem('iem_cached_user', JSON.stringify(res.user));
+    }
     return res;
   };
 
@@ -70,8 +74,8 @@ export function AuthProvider({ children }) {
     return http.post('/auth/forgot-password', { email });
   };
 
-  const resetPassword = async ({ email, otp, newPassword }) => {
-    const res = await http.post('/auth/reset-password', { email, otp, newPassword });
+  const resetPassword = async ({ accessToken, newPassword }) => {
+    const res = await http.post('/auth/reset-password', { accessToken, newPassword });
     setUser(null);
     window.localStorage.removeItem('iem_cached_user');
     return res;

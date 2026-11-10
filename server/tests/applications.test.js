@@ -9,6 +9,12 @@ import {
   resetApplicationStore,
 } from '../src/modules/applications/service.js';
 
+async function registerAccount(user) {
+  const registration = await request(app).post('/api/auth/register').send(user);
+  assert.equal(registration.status, 201);
+  return registration;
+}
+
 describe('Phase 3 — Applications & Documents Module Tests', () => {
   let applicantCookie = '';
   let adminCookie = '';
@@ -36,7 +42,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
     resetApplicationStore();
 
     // 1. Register applicant
-    const regRes = await request(app).post('/api/auth/register').send(applicantData);
+    const regRes = await registerAccount(applicantData);
     applicantId = regRes.body.user.id;
 
     const loginRes = await request(app)
@@ -45,7 +51,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
     applicantCookie = loginRes.headers['set-cookie']?.[0] || '';
 
     // 2. Register & elevate admin
-    const adminReg = await request(app).post('/api/auth/register').send(adminData);
+    const adminReg = await registerAccount(adminData);
     adminId = adminReg.body.user.id;
     setInMemoryUserRole(adminId, 'admin');
 

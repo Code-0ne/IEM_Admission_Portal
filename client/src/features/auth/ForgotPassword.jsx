@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, LockKey, EnvelopeSimple, CheckCircle, Warning, Check } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Check, CheckCircle, EnvelopeSimple, LockKey, Warning } from '@phosphor-icons/react';
 import { useAuth } from './AuthContext.jsx';
-
-const RESET_EXPIRY_SECONDS = 900; // 15 minutes per spec
 
 function PasswordRules({ password }) {
   const rules = [
@@ -11,6 +9,7 @@ function PasswordRules({ password }) {
     { key: 'number', label: 'One number', ok: /[0-9]/.test(password) },
     { key: 'special', label: 'One special character', ok: /[^A-Za-z0-9]/.test(password) },
   ];
+
   return (
     <ul className="pw-rules">
       {rules.map((rule) => (
@@ -22,58 +21,35 @@ function PasswordRules({ password }) {
   );
 }
 
-function OtpInputs({ digits, onChange }) {
-  const updateDigit = (index, value) => {
-    const digit = value.replace(/\D/g, '').slice(-1);
-    const updated = [...digits];
-    updated[index] = digit;
-    onChange(updated);
-    if (digit && index < digits.length - 1) {
-      document.getElementById(`reset-otp-${index + 1}`)?.focus();
-    }
-  };
-
-  return (
-    <div className="otp-inputs">
-      {digits.map((digit, index) => (
-        <input
-          key={index}
-          id={`reset-otp-${index}`}
-          aria-label={`Reset code digit ${index + 1}`}
-          inputMode="numeric"
-          maxLength={1}
-          value={digit}
-          onChange={(e) => updateDigit(index, e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Backspace' && !digits[index] && index > 0) {
-              document.getElementById(`reset-otp-${index - 1}`)?.focus();
-            }
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 export function ForgotPassword({ onNavigate }) {
   const { forgotPassword, resetPassword } = useAuth();
-  const [stage, setStage] = useState('request'); // 'request' | 'verify' | 'done'
+  const [stage, setStage] = useState('request');
   const [email, setEmail] = useState('');
-  const [digits, setDigits] = useState(['', '', '', '', '', '']);
+  const [accessToken, setAccessToken] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [seconds, setSeconds] = useState(RESET_EXPIRY_SECONDS);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (stage !== 'verify') return;
-    const timer = window.setInterval(() => {
-      setSeconds((prev) => Math.max(prev - 1, 0));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [stage]);
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const token = fragment.get('access_token');
 
-  const formattedTimer = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    if (token && fragment.get('type') === 'recovery') {
+      setAccessToken(token);
+      setStage('reset');
+      window.history.replaceState(null, '', '/');
+      return;
+    }
+
+    const query = new URLSearchParams(window.location.search);
+    const linkError = fragment.get('error_description') || query.get('error_description') || query.get('error');
+    if (linkError) {
+      setError('This password reset link is invalid or has expired. Request a new link.');
+      window.history.replaceState(null, '', '/');
+    } else if (window.location.pathname.replace(/\/+$/, '') === '/reset-password') {
+      setError('Open the reset link from your email, or request a new one below.');
+    }
+  }, []);
 
   const passwordReady =
     password.length >= 8 &&
@@ -81,39 +57,23 @@ export function ForgotPassword({ onNavigate }) {
     /[0-9]/.test(password) &&
     /[^A-Za-z0-9]/.test(password);
 
-  const handleRequest = async (e) => {
-    e.preventDefault();
+  const handleRequest = async (event) => {
+    event.preventDefault();
     setError('');
-
-    if (!email.trim()) {
-      setError('Enter your registered email address.');
-      return;
-    }
-
     setLoading(true);
     try {
-      const res = await forgotPassword({ email: email.trim().toLowerCase() });
-      setStage('verify');
-      setSeconds(RESET_EXPIRY_SECONDS);
-      if (res?.otpCode) {
-        setDigits(res.otpCode.split(''));
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to request password reset code.');
+      await forgotPassword({ email: email.trim().toLowerCase() });
+      setStage('sent');
+    } catch (requestError) {
+      setError(requestError.message || 'Could not request a password reset. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleReset = async (e) => {
-    e.preventDefault();
+  const handleReset = async (event) => {
+    event.preventDefault();
     setError('');
-
-    const code = digits.join('');
-    if (code.length !== 6) {
-      setError('Enter all six digits of the reset code.');
-      return;
-    }
 
     if (!passwordReady) {
       setError('New password does not satisfy all complexity requirements.');
@@ -122,14 +82,10 @@ export function ForgotPassword({ onNavigate }) {
 
     setLoading(true);
     try {
-      await resetPassword({
-        email: email.trim().toLowerCase(),
-        otp: code,
-        newPassword: password,
-      });
+      await resetPassword({ accessToken, newPassword: password });
       setStage('done');
-    } catch (err) {
-      setError(err.message || 'Failed to reset password. Code may have expired.');
+    } catch (resetError) {
+      setError(resetError.message || 'Could not reset your password. Request a new link and try again.');
     } finally {
       setLoading(false);
     }
@@ -141,18 +97,12 @@ export function ForgotPassword({ onNavigate }) {
         <button className="back-link" onClick={() => onNavigate('login')} type="button">
           <ArrowLeft size={16} /> Back to sign in
         </button>
-
-        <span className="otp-icon">
-          <LockKey size={22} />
-        </span>
+        <span className="otp-icon"><LockKey size={22} /></span>
 
         {stage === 'request' && (
           <>
             <h1>Forgot your password?</h1>
-            <p className="otp-copy">
-              Enter your registered email and we will send a reset code valid for 15 minutes.
-              All active sessions will be terminated on reset.
-            </p>
+            <p className="otp-copy">Enter your registered email and Supabase will send a secure password reset link.</p>
             <form onSubmit={handleRequest}>
               <label className="field">
                 <span className="field__label">Email Address *</span>
@@ -163,49 +113,39 @@ export function ForgotPassword({ onNavigate }) {
                     placeholder="you@example.com"
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(event) => setEmail(event.target.value)}
                     required
                   />
                 </span>
               </label>
-
-              {error && (
-                <p className="form-error" role="alert">
-                  <Warning size={14} /> {error}
-                </p>
-              )}
-
-              <button
-                className="button button--charcoal button--full"
-                style={{ marginTop: '18px' }}
-                disabled={loading}
-                type="submit"
-              >
-                {loading ? 'Sending code...' : 'Send reset code'}
+              {error && <p className="form-error" role="alert"><Warning size={14} /> {error}</p>}
+              <button className="button button--charcoal button--full" style={{ marginTop: '18px' }} disabled={loading} type="submit">
+                {loading ? 'Sending link...' : 'Send reset link'}
               </button>
             </form>
           </>
         )}
 
-        {stage === 'verify' && (
-          <>
-            <h1>Set a new password</h1>
+        {stage === 'sent' && (
+          <div className="otp-success">
+            <EnvelopeSimple size={42} weight="duotone" style={{ color: 'var(--brand-gold, #c89d53)' }} />
+            <h1>Check your email</h1>
             <p className="otp-copy">
-              Enter the 6-digit code sent to <strong>{email}</strong> and choose your new password.
+              If an account exists for <strong>{email}</strong>, Supabase has sent a password reset link.
+              The link may take a few minutes to arrive.
             </p>
+            <button className="button button--charcoal button--full" style={{ marginTop: '14px' }} onClick={() => onNavigate('login')} type="button">
+              Back to sign in
+            </button>
+          </div>
+        )}
+
+        {stage === 'reset' && (
+          <>
+            <h1>Choose a new password</h1>
+            <p className="otp-copy">Set a new password for your account.</p>
             <form onSubmit={handleReset}>
-              <label className="otp-label">Reset code</label>
-              <OtpInputs digits={digits} onChange={setDigits} />
-
-              <p className="otp-countdown">
-                {seconds > 0 ? (
-                  `Code expires in ${formattedTimer}`
-                ) : (
-                  <span className="text-danger">Code expired. Please request a new one.</span>
-                )}
-              </p>
-
-              <label className="field" style={{ marginTop: '16px' }}>
+              <label className="field">
                 <span className="field__label">New Password *</span>
                 <span className="field__control">
                   <LockKey size={17} weight="regular" />
@@ -214,26 +154,14 @@ export function ForgotPassword({ onNavigate }) {
                     placeholder="Create a new password"
                     autoComplete="new-password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(event) => setPassword(event.target.value)}
                     required
                   />
                 </span>
               </label>
-
               <PasswordRules password={password} />
-
-              {error && (
-                <p className="form-error" role="alert">
-                  <Warning size={14} /> {error}
-                </p>
-              )}
-
-              <button
-                className="button button--charcoal button--full"
-                style={{ marginTop: '14px' }}
-                disabled={digits.some((d) => !d) || !passwordReady || loading}
-                type="submit"
-              >
+              {error && <p className="form-error" role="alert"><Warning size={14} /> {error}</p>}
+              <button className="button button--charcoal button--full" style={{ marginTop: '14px' }} disabled={!passwordReady || loading} type="submit">
                 {loading ? 'Updating password...' : 'Reset password'}
               </button>
             </form>
@@ -244,13 +172,14 @@ export function ForgotPassword({ onNavigate }) {
           <div className="otp-success">
             <CheckCircle size={44} weight="duotone" style={{ color: 'var(--brand-gold, #c89d53)' }} />
             <h1>Password updated</h1>
-            <p className="otp-copy">
-              Your password has been changed successfully. All previous sessions were revoked for security.
-            </p>
+            <p className="otp-copy">Your password has been changed and previous sessions have been revoked.</p>
             <button
               className="button button--charcoal button--full"
               style={{ marginTop: '14px' }}
-              onClick={() => onNavigate('login')}
+              onClick={() => {
+                window.history.replaceState(null, '', '/');
+                onNavigate('login');
+              }}
               type="button"
             >
               Back to sign in

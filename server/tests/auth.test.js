@@ -4,6 +4,12 @@ import request from 'supertest';
 import app from '../src/app.js';
 import { resetAuthStore } from '../src/modules/auth/service.js';
 
+async function registerAccount(payload) {
+  const registration = await request(app).post('/api/auth/register').send(payload);
+  assert.equal(registration.status, 201);
+  return registration;
+}
+
 describe('Phase 2 — Authentication & Access Control Tests', () => {
   beforeEach(() => {
     resetAuthStore();
@@ -34,7 +40,7 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
       }
     });
 
-    it('should register a new applicant as verified without generating a verification OTP', async () => {
+    it('should register a verified applicant and create an authenticated session', async () => {
       const res = await request(app)
         .post('/api/auth/register')
         .send({
@@ -52,6 +58,12 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
       assert.equal(res.body.user.isVerified, true);
       assert.equal(res.body.user.email, 'subhashree@example.com');
       assert.equal(res.body.otpCode, undefined);
+      assert.ok(res.headers['set-cookie']);
+      const currentUser = await request(app)
+        .get('/api/auth/me')
+        .set('Cookie', res.headers['set-cookie'][0]);
+      assert.equal(currentUser.status, 200);
+      assert.equal(currentUser.body.user.email, 'subhashree@example.com');
     });
 
     it('should reject registration if email is already taken', async () => {
@@ -75,7 +87,7 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
       assert.equal(res2.body.error.code, 'CONFLICT');
     });
 
-    it('should allow a newly registered applicant to sign in without OTP verification', async () => {
+    it('should allow sign-in immediately after registration', async () => {
       const reg = await request(app)
         .post('/api/auth/register')
         .send({
@@ -88,22 +100,21 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
         });
 
       assert.equal(reg.status, 201);
+      assert.equal(reg.body.user.isVerified, true);
       const login = await request(app)
         .post('/api/auth/login')
         .send({ identifier: 'tanmoy@example.com', password: 'Password@123' });
-
       assert.equal(login.status, 200);
       assert.equal(login.body.user.isVerified, true);
       assert.ok(login.headers['set-cookie']);
     });
+
   });
 
   describe('2. Failed Login Lockout (5 attempts -> 15 min lock)', () => {
     it('should enforce account lockout after 5 consecutive failed login attempts', async () => {
       // 1. Create applicant
-      await request(app)
-        .post('/api/auth/register')
-        .send({
+      await registerAccount({
           fullName: 'Debanjan Ghosh',
           email: 'debanjan@example.com',
           countryCode: '+91',
@@ -141,9 +152,7 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
   describe('3. Session Row Creation & Immediate Revocation on Logout', () => {
     it('should create session cookie on login, allow access to /me, and revoke session instantly on logout', async () => {
       // 1. Register
-      const reg = await request(app)
-        .post('/api/auth/register')
-        .send({
+      await registerAccount({
           fullName: 'Ananya Mitra',
           email: 'ananya@example.com',
           countryCode: '+91',
@@ -199,9 +208,7 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
 
     it('should forbid applicants from accessing admin-only routes with 403', async () => {
       // Create and login as applicant
-      const reg = await request(app)
-        .post('/api/auth/register')
-        .send({
+      await registerAccount({
           fullName: 'Applicant User',
           email: 'applicant@example.com',
           countryCode: '+91',
@@ -227,9 +234,7 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
     });
 
     it('should permit admin users to access admin routes with 200', async () => {
-      const reg = await request(app)
-        .post('/api/auth/register')
-        .send({
+      const reg = await registerAccount({
           fullName: 'Office Admin',
           email: 'admin.user@iem.edu.in',
           countryCode: '+91',
@@ -265,9 +270,7 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
 
   describe('5. Password Reset Workflow', () => {
     it('should issue reset code and update password', async () => {
-      await request(app)
-        .post('/api/auth/register')
-        .send({
+      await registerAccount({
           fullName: 'Reset Tester',
           email: 'reset@example.com',
           countryCode: '+91',

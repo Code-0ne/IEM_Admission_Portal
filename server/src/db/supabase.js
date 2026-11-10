@@ -39,6 +39,30 @@ export function getSupabaseClient() {
   }
 }
 
+export function createSupabaseAuthClient() {
+  const isTesting =
+    process.env.NODE_ENV === 'test' ||
+    process.execArgv.some((a) => a.includes('test')) ||
+    process.argv.some((a) => a.includes('test'));
+
+  if (isTesting && !process.env.TEST_WITH_LIVE_DB) {
+    return null;
+  }
+
+  const { url, anonKey } = config.supabase;
+  if (!url || !anonKey) {
+    return null;
+  }
+
+  return createClient(url, anonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
 export const supabase = getSupabaseClient();
 
 /**

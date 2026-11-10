@@ -28,11 +28,13 @@ authRouter.post('/register', authRateLimiter, async (req, res, next) => {
   try {
     const validatedData = userRegistrationSchema.parse(req.body);
     const result = await authService.register(validatedData);
+    setSessionCookie(res, result.token);
 
     res.status(201).json({
       success: true,
-      message: 'Account created successfully. You can now sign in.',
+      message: 'Account created successfully.',
       user: result.user,
+      token: result.token,
     });
   } catch (err) {
     next(err);
@@ -98,7 +100,7 @@ authRouter.get('/me', authenticate, async (req, res) => {
 /**
  * POST /api/auth/forgot-password
  */
-authRouter.post('/forgot-password', async (req, res, next) => {
+authRouter.post('/forgot-password', authRateLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -115,17 +117,17 @@ authRouter.post('/forgot-password', async (req, res, next) => {
 /**
  * POST /api/auth/reset-password
  */
-authRouter.post('/reset-password', async (req, res, next) => {
+authRouter.post('/reset-password', authRateLimiter, async (req, res, next) => {
   try {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) {
-      throw new BadRequestError('Email, reset code, and new password are required');
+    const { accessToken, email, otp, newPassword } = req.body;
+    if (!newPassword || (!accessToken && (!email || !otp))) {
+      throw new BadRequestError('A reset link and new password are required');
     }
 
     // Validate password complexity
     passwordSchema.parse(newPassword);
 
-    const result = await authService.resetPassword({ email, otp, newPassword });
+    const result = await authService.resetPassword({ accessToken, email, otp, newPassword });
 
     // Ensure session cookie is cleared after password reset
     res.clearCookie(SESSION_COOKIE_NAME, {

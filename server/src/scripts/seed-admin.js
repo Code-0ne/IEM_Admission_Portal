@@ -1,7 +1,13 @@
-import bcrypt from 'bcrypt';
+import config from '../config.js';
 import { getSupabaseClient } from '../db/supabase.js';
 
-const SALT_ROUNDS = 10;
+async function findAuthUserByEmail(client, email) {
+  const { data, error } = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (error) {
+    throw new Error(`Could not check Supabase Auth users: ${error.message}`);
+  }
+  return data.users.find((user) => user.email?.toLowerCase() === email) || null;
+}
 
 export async function seedAdmin(options = {}) {
   const email = (options.email || process.env.ADMIN_SEED_EMAIL || '').trim().toLowerCase();
@@ -29,7 +35,7 @@ export async function seedAdmin(options = {}) {
 
   const { data: existingUser, error: lookupError } = await client
     .from('users')
-    .select('id, email, role')
+    .select('id, email, role, auth_user_id')
     .eq('email', email)
     .maybeSingle();
 
@@ -51,13 +57,54 @@ export async function seedAdmin(options = {}) {
     throw new Error('ADMIN_SEED_MOBILE is already assigned to a different account.');
   }
 
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  if (!config.supabase.serviceRoleKey) {
+    throw new Error('SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY is required to seed an admin.');
+  }
+
+  let authUser;
+  if (existingUser?.auth_user_id) {
+    const { data, error } = await client.auth.admin.updateUserById(existingUser.auth_user_id, {
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    });
+    if (error) {
+      throw new Error(`Could not update the configured admin Auth account: ${error.message}`);
+    }
+    authUser = data.user;
+  } else {
+    authUser = await findAuthUserByEmail(client, email);
+    if (authUser) {
+      const { data, error } = await client.auth.admin.updateUserById(authUser.id, {
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+      if (error) {
+        throw new Error(`Could not update the configured admin Auth account: ${error.message}`);
+      }
+      authUser = data.user;
+    } else {
+      const { data, error } = await client.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+      if (error || !data.user) {
+        throw new Error(`Could not create the configured admin Auth account: ${error?.message || 'No user returned.'}`);
+      }
+      authUser = data.user;
+    }
+  }
+
   const adminFields = {
+    auth_user_id: authUser.id,
     full_name: fullName,
     email,
     country_code: countryCode,
     mobile,
-    password_hash: passwordHash,
+    password_hash: null,
     role: 'admin',
     is_verified: true,
     failed_login_attempts: 0,

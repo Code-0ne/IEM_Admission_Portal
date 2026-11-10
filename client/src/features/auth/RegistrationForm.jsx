@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   CheckCircle,
   BookOpen,
+  Warning,
 } from '@phosphor-icons/react';
 import { useAuth } from './AuthContext.jsx';
 
@@ -78,9 +79,7 @@ export function RegistrationForm({ onNavigate, onRegistered }) {
         consent,
       });
 
-      if (onRegistered) {
-        onRegistered(res.user);
-      }
+      if (onRegistered) onRegistered(res.user);
     } catch (err) {
       if (err.code === 'VALIDATION_ERROR' && Array.isArray(err.details)) {
         const nextFieldErrors = {};
@@ -132,7 +131,7 @@ export function RegistrationForm({ onNavigate, onRegistered }) {
             </span>
             <p>
               <strong>Easy sign-in</strong>
-              <small>Start using your account right after registration.</small>
+              <small>Sign in securely with your password.</small>
             </p>
           </div>
           <div>

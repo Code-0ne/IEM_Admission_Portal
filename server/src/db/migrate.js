@@ -7,16 +7,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Migration helper to read and provide the initial SQL schema.
+ * Load all numbered SQL migrations in application order.
  */
+export function getMigrationSQL() {
+  const migrationDir = path.join(__dirname, 'migrations');
+  const migrationFiles = fs.readdirSync(migrationDir)
+    .filter((name) => /^\d+_.*\.sql$/.test(name))
+    .sort();
+
+  if (migrationFiles.length === 0) {
+    throw new Error(`No SQL migrations found in ${migrationDir}`);
+  }
+
+  return migrationFiles
+    .map((name) => fs.readFileSync(path.join(migrationDir, name), 'utf-8'))
+    .join('\n\n');
+}
+
 export function getInitialSchemaSQL() {
-  const schemaPath = path.join(__dirname, 'migrations', '001_initial_schema.sql');
-  return fs.readFileSync(schemaPath, 'utf-8');
+  return getMigrationSQL();
 }
 
 export async function runMigrations() {
   console.log('--- Database Migration Runner ---');
-  const sql = getInitialSchemaSQL();
+  const sql = getMigrationSQL();
   console.log(`Loaded migration SQL (bytes: ${sql.length})`);
 
   if (!config.supabase.databaseUrl && !config.supabase.url) {
