@@ -1133,6 +1133,18 @@ textarea:focus-visible {
   font-size: 12px;
   line-height: 1.4;
 }
+.field--correction .field__control,
+.field--correction .select-control,
+.field.field--correction textarea {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.field__correction-note {
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
 .field--invalid .field__control,
 .field--invalid .select-control,
 .field--invalid textarea {
@@ -3190,6 +3202,14 @@ textarea:focus-visible {
 .doc-slot:has(.doc-slot__icon.is-done) {
   border-color: rgba(5, 150, 105, 0.4);
   background: var(--success-soft);
+}
+.doc-slot.doc-slot--correction {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.doc-slot.doc-slot--correction.doc-slot--invalid {
+  border-color: var(--red);
+  background: var(--red-soft);
 }
 .doc-slot--invalid {
   border-color: var(--red);

@@ -9,6 +9,7 @@ import {
 import { applicationApi } from './features/application/applicationApi.js';
 import { AdminPortal } from './features/admin/index.js';
 import AdminLoginPage from './features/admin/AdminLoginPage.jsx';
+import { CORRECTION_FIELD_GROUPS } from './features/applications/correctionFields.js';
 import {
   ArrowLeft,
   ArrowRight,
@@ -94,12 +95,12 @@ const PROGRAMS = [
       { id: 'cse', name: 'Computer Science & Engineering', eligibility: { tenth: 80, twelfth: 80 }, booking: { appearing: 50000, passed: 140000 } },
       { id: 'cse-ai', name: 'Computer Science & Engineering (AI)', eligibility: { tenth: 70, twelfth: 70, pcm: 50 }, booking: { appearing: 50000, passed: 140000 } },
       { id: 'cse-aiml', name: 'Computer Science & Engineering (AI & ML)', eligibility: { tenth: 75, twelfth: 75, pcm: 50 }, booking: { appearing: 50000, passed: 140000 } },
-      { id: 'cse-ds', name: 'Computer Science & Engineering (Data Science)', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: null },
-      { id: 'ai-ds', name: 'Artificial Intelligence & Data Science', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: null },
-      { id: 'iot', name: 'Internet of Things', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: null },
-      { id: 'iot-bct', name: 'Internet of Things (CS & BCT)', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: null },
-      { id: 'cyber', name: 'Cyber Security', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: null },
-      { id: 'biotech', name: 'BioTechnology', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: null },
+      { id: 'cse-ds', name: 'Computer Science & Engineering (Data Science)', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
+      { id: 'ai-ds', name: 'Artificial Intelligence & Data Science', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
+      { id: 'iot', name: 'Internet of Things', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
+      { id: 'iot-bct', name: 'Internet of Things (CS & BCT)', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
+      { id: 'cyber', name: 'Cyber Security', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
+      { id: 'biotech', name: 'BioTechnology', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
       { id: 'it', name: 'Information Technology', eligibility: { tenth: 70, twelfth: 70, pcm: 50 }, booking: { appearing: 50000, passed: 140000 } },
       { id: 'ece', name: 'Electronics & Communication Engineering', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
       { id: 'ee', name: 'Electrical Engineering', eligibility: { tenth: 60, twelfth: 60, pcm: 45 }, booking: { appearing: 50000, passed: 140000 } },
@@ -174,6 +175,20 @@ const FORM_STEPS = [
   { key: 'review', label: 'Review & Submit' },
 ];
 const ApplicationFieldErrorsContext = createContext({});
+const ApplicationCorrectionFieldsContext = createContext([]);
+
+function getCorrectionStepIndex(application) {
+  const fieldGroup = CORRECTION_FIELD_GROUPS.find((group) =>
+    group.fields.some((field) => application.flaggedFields?.includes(field.key))
+  );
+  const sectionGroup = CORRECTION_FIELD_GROUPS.find((group) =>
+    application.flaggedSections?.includes(group.sectionKey)
+  );
+  const targetGroup = fieldGroup || sectionGroup;
+  return targetGroup
+    ? FORM_STEPS.findIndex((formStep) => formStep.key === targetGroup.stepKey)
+    : 0;
+}
 
 const APPLICATION_STATUSES = ['Draft', 'Submitted', 'Under Review', 'Correction Requested', 'Approved', 'Rejected', 'Admission Confirmed'];
 const APPLICANT_VISIBLE_STATUSES = ['Submitted', 'Under Review', 'Correction Requested', 'Approved', 'Admission Confirmed'];
@@ -980,10 +995,12 @@ function AuthShell({ children, onNavigate }) {
 
 function Field({ label, icon: Icon, hint, wide = false, ...inputProps }) {
   const fieldErrors = useContext(ApplicationFieldErrorsContext);
+  const correctionFields = useContext(ApplicationCorrectionFieldsContext);
   const error = fieldErrors[inputProps.name];
+  const correctionRequested = correctionFields.includes(inputProps.name);
   const errorId = error ? `application-error-${inputProps.name}` : undefined;
   return (
-    <label className={`field${wide ? ' field--wide' : ''}${error ? ' field--invalid' : ''}`}>
+    <label className={`field${wide ? ' field--wide' : ''}${error ? ' field--invalid' : ''}${correctionRequested ? ' field--correction' : ''}`}>
       <span className="field__label">{label}</span>
       <span className="field__control">
         {Icon && <Icon size={17} weight="regular" aria-hidden="true" />}
@@ -991,16 +1008,19 @@ function Field({ label, icon: Icon, hint, wide = false, ...inputProps }) {
       </span>
       {hint && <small className="field__hint">{hint}</small>}
       {error && <small className="field__error" id={errorId}>{error}</small>}
+      {correctionRequested && <small className="field__correction-note">Correction requested</small>}
     </label>
   );
 }
 
 function SelectField({ label, name, value, onChange, options, placeholder, required, wide = false, hint }) {
   const fieldErrors = useContext(ApplicationFieldErrorsContext);
+  const correctionFields = useContext(ApplicationCorrectionFieldsContext);
   const error = fieldErrors[name];
+  const correctionRequested = correctionFields.includes(name);
   const errorId = error ? `application-error-${name}` : undefined;
   return (
-    <label className={`field${wide ? ' field--wide' : ''}${error ? ' field--invalid' : ''}`}>
+    <label className={`field${wide ? ' field--wide' : ''}${error ? ' field--invalid' : ''}${correctionRequested ? ' field--correction' : ''}`}>
       <span className="field__label">{label}</span>
       <span className="select-control">
         <select name={name} value={value ?? ''} onChange={onChange} required={required} aria-invalid={error ? 'true' : undefined} aria-describedby={errorId}>
@@ -1015,20 +1035,24 @@ function SelectField({ label, name, value, onChange, options, placeholder, requi
       </span>
       {hint && <small className="field__hint">{hint}</small>}
       {error && <small className="field__error" id={errorId}>{error}</small>}
+      {correctionRequested && <small className="field__correction-note">Correction requested</small>}
     </label>
   );
 }
 
 function TextArea({ label, name, value, onChange, wide = false, hint, ...props }) {
   const fieldErrors = useContext(ApplicationFieldErrorsContext);
+  const correctionFields = useContext(ApplicationCorrectionFieldsContext);
   const error = fieldErrors[name];
+  const correctionRequested = correctionFields.includes(name);
   const errorId = error ? `application-error-${name}` : undefined;
   return (
-    <label className={`field${wide ? ' field--wide' : ''}${error ? ' field--invalid' : ''}`}>
+    <label className={`field${wide ? ' field--wide' : ''}${error ? ' field--invalid' : ''}${correctionRequested ? ' field--correction' : ''}`}>
       <span className="field__label">{label}</span>
       <textarea name={name} value={value ?? ''} onChange={onChange} {...props} aria-invalid={error ? 'true' : undefined} aria-describedby={errorId} />
       {hint && <small className="field__hint">{hint}</small>}
       {error && <small className="field__error" id={errorId}>{error}</small>}
+      {correctionRequested && <small className="field__correction-note">Correction requested</small>}
     </label>
   );
 }
@@ -1458,6 +1482,7 @@ function DashboardPage({ application, onNavigate, notifications }) {
 function DocumentsPanel({ application, setApplication, readOnly = false, showHeading = true, onDocumentChange, onApplicationDirty }) {
   const [errors, setErrors] = useState({});
   const fieldErrors = useContext(ApplicationFieldErrorsContext);
+  const correctionFields = useContext(ApplicationCorrectionFieldsContext);
   const required = requiredDocumentSlots(application);
 
   const upload = async (slotKey, file) => {
@@ -1552,7 +1577,7 @@ function DocumentsPanel({ application, setApplication, readOnly = false, showHea
           const isRequired = required.some((item) => item.key === slot.key);
           const conditional = !slot.required && isRequired;
           return (
-            <div className={`doc-slot${fieldErrors[slot.key] ? ' doc-slot--invalid' : ''}`} key={slot.key}>
+            <div className={`doc-slot${fieldErrors[slot.key] ? ' doc-slot--invalid' : ''}${correctionFields.includes(slot.key) ? ' doc-slot--correction' : ''}`} key={slot.key}>
               <div className="doc-slot__row">
                 <span className={`doc-slot__icon${doc?.status === 'uploaded' ? ' is-done' : ''}`}>
                   {doc?.status === 'uploaded' ? <Check size={16} weight="bold" /> : <FileText size={16} />}
@@ -1586,6 +1611,7 @@ function DocumentsPanel({ application, setApplication, readOnly = false, showHea
                 <div className="doc-progress"><span style={{ width: `${doc.progress}%` }} /></div>
               )}
               {fieldErrors[slot.key] && <p className="field__error" role="alert">{fieldErrors[slot.key]}</p>}
+              {correctionFields.includes(slot.key) && <p className="field__correction-note">Correction requested</p>}
               {errors[slot.key] && <p className="form-error">{errors[slot.key]}</p>}
             </div>
           );
@@ -1620,7 +1646,9 @@ function ReviewGroup({ title, stepIndex, rows, onEdit }) {
 }
 
 function ApplicationPage({ onNavigate, applicantName, application, setApplication, notify, onApplicationDirty, onApplicationSaved, getApplicationEditVersion }) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() => (
+    application.status === 'Correction Requested' ? getCorrectionStepIndex(application) : 0
+  ));
   const [notice, setNotice] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [reviewError, setReviewError] = useState('');
@@ -1628,6 +1656,7 @@ function ApplicationPage({ onNavigate, applicantName, application, setApplicatio
   const [fieldErrors, setFieldErrors] = useState({});
   const [validationAttempted, setValidationAttempted] = useState(false);
   const formRef = useRef(null);
+  const correctionAutoNavigated = useRef(application.status === 'Correction Requested');
 
   const update = (event) => {
     onApplicationDirty();
@@ -1676,6 +1705,22 @@ function ApplicationPage({ onNavigate, applicantName, application, setApplicatio
   const allComplete = reviewSteps.every((item) => item.complete);
   const isCorrection = application.status === 'Correction Requested';
   const locked = ['Submitted', 'Under Review', 'Approved', 'Rejected', 'Admission Confirmed'].includes(application.status);
+  const correctionFields = application.flaggedFields || [];
+  const correctionFieldLabels = CORRECTION_FIELD_GROUPS
+    .flatMap((group) => group.fields)
+    .filter((field) => correctionFields.includes(field.key))
+    .map((field) => field.label);
+
+  useEffect(() => {
+    if (application.status !== 'Correction Requested') {
+      correctionAutoNavigated.current = false;
+      return;
+    }
+    if (!correctionAutoNavigated.current) {
+      correctionAutoNavigated.current = true;
+      setStep(getCorrectionStepIndex(application));
+    }
+  }, [application.status, application.flaggedFields, application.flaggedSections]);
 
   useEffect(() => {
     if (application.sameAsPresent) {
@@ -1801,8 +1846,9 @@ function ApplicationPage({ onNavigate, applicantName, application, setApplicatio
           <Warning size={15} />
           <div>
             <strong>Corrections requested: {application.flaggedSections?.join(', ') || 'flagged sections'}.</strong>
+            {correctionFieldLabels.length > 0 && <p>Highlighted fields: {correctionFieldLabels.join(', ')}.</p>}
             {application.decisionReason && <p>{application.decisionReason}</p>}
-            <p>Update the requested sections and resubmit your application.</p>
+            <p>Update the highlighted fields and resubmit your application.</p>
           </div>
         </div>
       )}
@@ -1811,6 +1857,7 @@ function ApplicationPage({ onNavigate, applicantName, application, setApplicatio
       <Stepper current={step} labels={FORM_STEPS.map((item) => item.label)} />
 
       <ApplicationFieldErrorsContext.Provider value={fieldErrors}>
+      <ApplicationCorrectionFieldsContext.Provider value={correctionFields}>
       <form ref={formRef} className="application-form" noValidate onSubmit={async (event) => {
         event.preventDefault();
         if (step < FORM_STEPS.length - 1) {
@@ -2147,6 +2194,7 @@ function ApplicationPage({ onNavigate, applicantName, application, setApplicatio
             : <button className="button button--charcoal" disabled={!allComplete || application.declaration !== true} type="submit"><SealCheck size={16} /> Submit application</button>}
         </div>
       </form>
+      </ApplicationCorrectionFieldsContext.Provider>
       </ApplicationFieldErrorsContext.Provider>
     </>
   );
@@ -2621,6 +2669,7 @@ function AppContent() {
       try {
         const res = await applicationApi.getMyApplication();
         if (!active || !res?.application) return;
+        if (res.ownerId !== auth.user.id) return;
 
         const latest = res.application;
         const previous = applicationRef.current;

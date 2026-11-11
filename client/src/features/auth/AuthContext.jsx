@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { http } from '../../api/http.js';
 
 const AuthContext = createContext(null);
@@ -13,37 +13,53 @@ export function AuthProvider({ children }) {
     }
   });
   const [loading, setLoading] = useState(true);
+  const authRequestId = useRef(0);
 
-  // Rehydrate authenticated user session on mount
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadCurrentUser() {
-      try {
-        const data = await http.get('/auth/me');
-        if (mounted && data?.user) {
-          setUser(data.user);
-          window.localStorage.setItem('iem_cached_user', JSON.stringify(data.user));
-        }
-      } catch (error) {
-        if (mounted && (error?.statusCode === 401 || error?.code === 'UNAUTHORIZED')) {
-          setUser(null);
-          window.localStorage.removeItem('iem_cached_user');
-        }
-      } finally {
-        if (mounted) setLoading(false);
+  const refreshCurrentUser = useCallback(async () => {
+    const requestId = ++authRequestId.current;
+    try {
+      const data = await http.get('/auth/me');
+      if (requestId === authRequestId.current && data?.user) {
+        setUser(data.user);
+        window.localStorage.setItem('iem_cached_user', JSON.stringify(data.user));
       }
+    } catch (error) {
+      if (
+        requestId === authRequestId.current
+        && (error?.statusCode === 401 || error?.code === 'UNAUTHORIZED')
+      ) {
+        setUser(null);
+        window.localStorage.removeItem('iem_cached_user');
+      }
+    } finally {
+      if (requestId === authRequestId.current) setLoading(false);
     }
-
-    loadCurrentUser();
-    return () => {
-      mounted = false;
-    };
   }, []);
+
+  // Keep the cached identity aligned with the shared cookie across browser tabs.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshCurrentUser();
+    };
+    const refreshAfterStorageChange = (event) => {
+      if (event.key === 'iem_cached_user') refreshCurrentUser();
+    };
+
+    refreshCurrentUser();
+    window.addEventListener('focus', refreshCurrentUser);
+    window.addEventListener('storage', refreshAfterStorageChange);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('focus', refreshCurrentUser);
+      window.removeEventListener('storage', refreshAfterStorageChange);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [refreshCurrentUser]);
 
   const register = async (payload) => {
     const res = await http.post('/auth/register', payload);
     if (res?.user) {
+      authRequestId.current += 1;
       setUser(res.user);
       window.localStorage.setItem('iem_cached_user', JSON.stringify(res.user));
     }
@@ -53,6 +69,7 @@ export function AuthProvider({ children }) {
   const login = async ({ identifier, password }) => {
     const res = await http.post('/auth/login', { identifier, password });
     if (res?.user) {
+      authRequestId.current += 1;
       setUser(res.user);
       window.localStorage.setItem('iem_cached_user', JSON.stringify(res.user));
     }
@@ -65,6 +82,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Ignore network errors on logout
     } finally {
+      authRequestId.current += 1;
       setUser(null);
       window.localStorage.removeItem('iem_cached_user');
     }
@@ -76,6 +94,7 @@ export function AuthProvider({ children }) {
 
   const resetPassword = async ({ accessToken, newPassword }) => {
     const res = await http.post('/auth/reset-password', { accessToken, newPassword });
+    authRequestId.current += 1;
     setUser(null);
     window.localStorage.removeItem('iem_cached_user');
     return res;

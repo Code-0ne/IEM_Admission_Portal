@@ -50,6 +50,7 @@ applicationsRouter.get('/me', authenticate, async (req, res, next) => {
     const application = await applicationService.getOrCreateApplication(req.user);
     res.status(200).json({
       success: true,
+      ownerId: req.user.id,
       application,
     });
   } catch (err) {
@@ -349,9 +350,10 @@ adminApplicationsRouter.post('/:id/decision', authenticate, requireAdmin, async 
 adminApplicationsRouter.post('/:id/request-correction', authenticate, requireAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { flaggedSections, comment } = req.body;
+    const { flaggedSections, flaggedFields, comment } = req.body;
     const result = await applicationService.requestCorrection(req.user, id, {
       flaggedSections,
+      flaggedFields,
       comment,
     });
     res.status(200).json(result);

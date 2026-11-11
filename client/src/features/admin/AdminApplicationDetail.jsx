@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import adminApi from './adminApi.js';
+import { CORRECTION_FIELD_GROUPS } from '../applications/correctionFields.js';
 
 const STATUS_LABELS = {
   Draft: { label: 'Draft', color: '#6b7280' },
@@ -18,16 +19,6 @@ const DOCUMENT_SLOTS = [
   { key: 'idProof', label: 'ID Proof (Aadhaar / Passport)' },
   { key: 'photograph', label: 'Photograph' },
   { key: 'categoryCertificate', label: 'Category Certificate' },
-];
-
-const FORM_SECTIONS = [
-  { key: 'personal', label: 'Personal & Course' },
-  { key: 'address', label: 'Address' },
-  { key: 'family', label: 'Family & Guardian' },
-  { key: 'citizenship', label: 'Citizenship' },
-  { key: 'academic', label: 'Academics' },
-  { key: 'other', label: 'Other Details' },
-  { key: 'documents', label: 'Documents' },
 ];
 
 const COURSE_NAMES = {
@@ -113,19 +104,25 @@ export function DocumentViewerModal({ appId, slot, slotLabel, onClose }) {
 
 export function CorrectionFlagModal({ appId, onClose, onDone, onToast }) {
   const [selected, setSelected] = useState([]);
+  const [selectedFields, setSelectedFields] = useState([]);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
 
   const toggle = (key) => setSelected(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  const toggleField = (key) => setSelectedFields(prev => prev.includes(key) ? prev.filter(field => field !== key) : [...prev, key]);
 
   const submit = async () => {
     if (selected.length === 0) {
       if (onToast) onToast('Select at least one section to flag.', 'error');
       return;
     }
+    if (selectedFields.length === 0) {
+      if (onToast) onToast('Select at least one specific field to highlight.', 'error');
+      return;
+    }
     setLoading(true);
     try {
-      await adminApi.requestCorrection(appId, { flaggedSections: selected, comment });
+      await adminApi.requestCorrection(appId, { flaggedSections: selected, flaggedFields: selectedFields, comment });
       if (onToast) onToast('Correction request sent to applicant.');
       onDone();
     } catch (e) {
@@ -137,16 +134,23 @@ export function CorrectionFlagModal({ appId, onClose, onDone, onToast }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 12, width: 480, padding: 28 }}>
+      <div style={{ background: '#fff', borderRadius: 12, width: 'min(480px, calc(100vw - 32px))', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', padding: 28, boxSizing: 'border-box' }}>
         <h3 style={{ margin: '0 0 16px', fontSize: 17 }}>Request Correction</h3>
         <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 16px' }}>
-          Select sections the applicant must correct. Only selected sections will be unlocked for editing.
+          Select the affected sections, then choose the exact fields the applicant needs to correct.
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          {FORM_SECTIONS.map(sec => (
+          {CORRECTION_FIELD_GROUPS.map(sec => (
             <button
               key={sec.key} type="button"
-              onClick={() => toggle(sec.key)}
+              aria-pressed={selected.includes(sec.key)}
+              onClick={() => {
+                toggle(sec.key);
+                if (selected.includes(sec.key)) {
+                  const sectionFields = sec.fields.map(field => field.key);
+                  setSelectedFields(prev => prev.filter(field => !sectionFields.includes(field)));
+                }
+              }}
               style={{
                 padding: '6px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', fontWeight: 500,
                 background: selected.includes(sec.key) ? '#2563eb' : '#f3f4f6',
@@ -158,6 +162,23 @@ export function CorrectionFlagModal({ appId, onClose, onDone, onToast }) {
             </button>
           ))}
         </div>
+        {selected.map(sectionKey => {
+          const section = CORRECTION_FIELD_GROUPS.find(item => item.key === sectionKey);
+          if (!section) return null;
+          return (
+            <fieldset key={section.key} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, margin: '0 0 12px' }}>
+              <legend style={{ padding: '0 4px', fontSize: 12, fontWeight: 700, color: '#374151' }}>{section.label} fields</legend>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px 12px', maxHeight: 180, overflowY: 'auto' }}>
+                {section.fields.map(field => (
+                  <label key={field.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, fontSize: 12, color: '#374151' }}>
+                    <input type="checkbox" checked={selectedFields.includes(field.key)} onChange={() => toggleField(field.key)} />
+                    <span>{field.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          );
+        })}
         <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Reviewer Comment (shown to applicant)</label>
         <textarea
           value={comment} onChange={e => setComment(e.target.value)}

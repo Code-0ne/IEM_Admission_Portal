@@ -42,6 +42,32 @@ export function generateApplicationNumber() {
   return `UEM-${year}-${seq}`;
 }
 
+export async function getNextApplicationNumber(client, year = new Date().getFullYear()) {
+  const prefix = `UEM-${year}-`;
+  const { data, error } = await client
+    .from('applications')
+    .select('application_no')
+    .like('application_no', `${prefix}%`)
+    .order('application_no', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new InternalServerError(`Could not allocate application number: ${error.message}`);
+  }
+
+  let sequence = 0;
+  if (data?.application_no) {
+    const match = data.application_no.match(new RegExp(`^UEM-${year}-(\\d+)$`));
+    if (!match || !Number.isSafeInteger(Number(match[1]))) {
+      throw new InternalServerError('Could not allocate application number: latest existing number is invalid.');
+    }
+    sequence = Number(match[1]);
+  }
+
+  return `${prefix}${String(sequence + 1).padStart(5, '0')}`;
+}
+
 /**
  * Determine required document slots based on application selections
  */
@@ -67,6 +93,10 @@ export function getRequiredDocumentSlots(app) {
 }
 
 export function mapApplicationRow(row, course = null) {
+  const storedCorrectionFlags = Array.isArray(row.flagged_sections) ? row.flagged_sections : [];
+  const flaggedFields = storedCorrectionFlags
+    .filter((flag) => typeof flag === 'string' && flag.startsWith('field:'))
+    .map((flag) => flag.slice('field:'.length));
   const streamId = row.stream || '';
   const streamMatch = COURSES_CATALOGUE
     .map((program) => ({
@@ -166,7 +196,8 @@ export function mapApplicationRow(row, course = null) {
     submittedAt: row.submitted_at || null,
     statusChangedAt: row.status_changed_at || null,
     decisionReason: row.decision_reason || '',
-    flaggedSections: row.flagged_sections || [],
+    flaggedSections: storedCorrectionFlags.filter((flag) => typeof flag === 'string' && !flag.startsWith('field:')),
+    flaggedFields,
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
   };
@@ -385,6 +416,7 @@ export class ApplicationService {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         flaggedSections: [],
+        flaggedFields: [],
       };
 
       if (client) {
@@ -706,40 +738,68 @@ export class ApplicationService {
     }
 
     const now = new Date().toISOString();
-    const applicationNo = app.applicationNo || generateApplicationNumber();
-
-    const submittedApp = {
-      ...app,
-      applicationNo,
-      status: 'Submitted',
-      submittedAt: now,
-      statusChangedAt: now,
-      updatedAt: now,
-      flaggedSections: [],
-    };
-
     const client = getSupabaseClient();
+    let applicationNo = app.applicationNo || null;
+    let submittedApp;
+
     if (client) {
-      const { data: updatedApplication, error } = await client
-        .from('applications')
-        .update({
-          application_no: applicationNo,
+      const maxAttempts = 5;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        applicationNo ||= await getNextApplicationNumber(client);
+        submittedApp = {
+          ...app,
+          applicationNo,
           status: 'Submitted',
-          submitted_at: now,
-          status_changed_at: now,
-          flagged_sections: [],
-          updated_at: now,
-        })
-        .eq('id', app.id)
-        .select('id')
-        .maybeSingle();
-      if (error) {
-        throw new InternalServerError(`Could not submit application: ${error.message}`);
-      }
-      if (!updatedApplication) {
-        throw new InternalServerError('Could not submit application: the application record was not updated.');
+          submittedAt: now,
+          statusChangedAt: now,
+          updatedAt: now,
+          flaggedSections: [],
+          flaggedFields: [],
+        };
+
+        const { data: updatedApplication, error } = await client
+          .from('applications')
+          .update({
+            application_no: applicationNo,
+            status: 'Submitted',
+            submitted_at: now,
+            status_changed_at: now,
+            flagged_sections: [],
+            updated_at: now,
+          })
+          .eq('id', app.id)
+          .select('id')
+          .maybeSingle();
+
+        if (error) {
+          const isApplicationNumberConflict =
+            error.code === '23505'
+            && [error.message, error.details, error.hint]
+              .some((value) => value?.includes('applications_application_no_key')
+                || value?.includes('application_no'));
+          if (!app.applicationNo && isApplicationNumberConflict && attempt < maxAttempts - 1) {
+            applicationNo = null;
+            continue;
+          }
+          throw new InternalServerError(`Could not submit application: ${error.message}`);
+        }
+        if (!updatedApplication) {
+          throw new InternalServerError('Could not submit application: the application record was not updated.');
+        }
+        break;
       }
     } else {
+      applicationNo ||= generateApplicationNumber();
+      submittedApp = {
+        ...app,
+        applicationNo,
+        status: 'Submitted',
+        submittedAt: now,
+        statusChangedAt: now,
+        updatedAt: now,
+        flaggedSections: [],
+        flaggedFields: [],
+      };
       inMemoryStore.applications.set(user.id, submittedApp);
       inMemoryStore.applicationsById.set(app.id, submittedApp);
     }
@@ -1335,7 +1395,19 @@ export class ApplicationService {
   /**
    * ADMIN: Request correction from applicant (FR12)
    */
-  async requestCorrection(adminUser, applicationId, { flaggedSections = [], comment }) {
+  async requestCorrection(adminUser, applicationId, { flaggedSections = [], flaggedFields = [], comment }) {
+    if (!Array.isArray(flaggedSections) || !flaggedSections.every((section) => typeof section === 'string')) {
+      throw new BadRequestError('Correction sections must be a list of section identifiers.');
+    }
+    if (!Array.isArray(flaggedFields) || !flaggedFields.every((field) => typeof field === 'string' && /^[A-Za-z][A-Za-z0-9]*$/.test(field))) {
+      throw new BadRequestError('Correction fields must be a list of valid field identifiers.');
+    }
+    const uniqueSections = [...new Set(flaggedSections)];
+    const uniqueFields = [...new Set(flaggedFields)];
+    const correctionFlags = [
+      ...uniqueSections,
+      ...uniqueFields.map((field) => `field:${field}`),
+    ];
     const app = await this.getApplicationById(applicationId);
     const now = new Date().toISOString();
 
@@ -1345,7 +1417,7 @@ export class ApplicationService {
         .from('applications')
         .update({
           status: 'CorrectionRequested',
-          flagged_sections: flaggedSections,
+          flagged_sections: correctionFlags,
           decision_reason: comment || null,
           status_changed_at: now,
           updated_at: now,
@@ -1364,7 +1436,8 @@ export class ApplicationService {
       const updatedApp = {
         ...app,
         status: 'CorrectionRequested',
-        flaggedSections,
+        flaggedSections: uniqueSections,
+        flaggedFields: uniqueFields,
         decisionReason: comment || '',
         statusChangedAt: now,
         updatedAt: now,
@@ -1383,7 +1456,8 @@ export class ApplicationService {
       success: true,
       message: 'Correction requested from applicant.',
       status: 'CorrectionRequested',
-      flaggedSections,
+      flaggedSections: uniqueSections,
+      flaggedFields: uniqueFields,
       comment: comment || '',
     };
   }

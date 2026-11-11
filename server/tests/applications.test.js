@@ -5,9 +5,11 @@ import app from '../src/app.js';
 import { resetAuthStore, setInMemoryUserRole } from '../src/modules/auth/service.js';
 import {
   evaluateCompleteness,
+  getNextApplicationNumber,
   mapApplicationRow,
   resetApplicationStore,
 } from '../src/modules/applications/service.js';
+import { COURSE_BY_ID } from '../src/modules/courses/coursesData.js';
 
 async function registerAccount(user) {
   const registration = await request(app).post('/api/auth/register').send(user);
@@ -71,6 +73,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
       dob: '2005-04-12',
       email: 'debapriya@example.com',
       mobile: '9830112233',
+      flagged_sections: ['academic', 'field:tenthPercent'],
       present_address: { line1: 'Sector V', pin: '700091' },
       permanent_address: { line1: 'Sector V', pin: '700091' },
       same_as_present: true,
@@ -94,10 +97,40 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
     assert.equal(application.programName, 'B.Tech');
     assert.equal(application.streamId, 'cse');
     assert.equal(application.streamName, 'Computer Science & Engineering');
+    assert.deepEqual(application.flaggedSections, ['academic']);
+    assert.deepEqual(application.flaggedFields, ['tenthPercent']);
     assert.equal(application.gender, 'Female');
     assert.equal(application.isForeign, 'No');
     assert.equal(application.marks12Maths, 88);
     assert.equal(evaluateCompleteness(application, documents).canSubmit, true);
+  });
+
+  it('allocates the next application number after the latest number for the year', async () => {
+    const year = new Date().getFullYear();
+    const query = {
+      select() { return this; },
+      like() { return this; },
+      order() { return this; },
+      limit() { return this; },
+      async maybeSingle() {
+        return { data: { application_no: `UEM-${year}-00041` }, error: null };
+      },
+    };
+    const client = {
+      from(table) {
+        assert.equal(table, 'applications');
+        return query;
+      },
+    };
+
+    assert.equal(await getNextApplicationNumber(client, year), `UEM-${year}-00042`);
+  });
+
+  it('publishes the selected booking amounts for every B.Tech stream', () => {
+    const btech = COURSE_BY_ID.btech;
+    for (const stream of btech.streams) {
+      assert.deepEqual(stream.booking, { appearing: 50000, passed: 140000 }, stream.id);
+    }
   });
 
   describe('1. Course Catalogue (FR4, FR5)', () => {
@@ -127,6 +160,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
 
       assert.equal(res.status, 200);
       assert.equal(res.body.success, true);
+      assert.equal(res.body.ownerId, applicantId);
       assert.equal(res.body.application.status, 'Draft');
       assert.equal(res.body.application.email, applicantData.email);
       assert.equal(res.body.application.category, '');
@@ -590,12 +624,14 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
         .set('Cookie', adminCookie)
         .send({
           flaggedSections: ['academic'],
+          flaggedFields: ['tenthPercent'],
           comment: 'Please check your 10th percentage against your marksheet.',
         });
 
       assert.equal(flagRes.status, 200);
       assert.equal(flagRes.body.status, 'CorrectionRequested');
       assert.deepEqual(flagRes.body.flaggedSections, ['academic']);
+      assert.deepEqual(flagRes.body.flaggedFields, ['tenthPercent']);
       assert.equal(flagRes.body.comment, 'Please check your 10th percentage against your marksheet.');
 
       const applicantView = await request(app)
@@ -604,6 +640,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
       assert.equal(applicantView.status, 200);
       assert.equal(applicantView.body.application.status, 'CorrectionRequested');
       assert.deepEqual(applicantView.body.application.flaggedSections, ['academic']);
+      assert.deepEqual(applicantView.body.application.flaggedFields, ['tenthPercent']);
       assert.equal(applicantView.body.application.decisionReason, flagRes.body.comment);
 
       // 2. Applicant edits flagged section (academic) -> should succeed
@@ -629,6 +666,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
       assert.equal(resubmit.status, 200);
       assert.equal(resubmit.body.application.status, 'Submitted');
       assert.deepEqual(resubmit.body.application.flaggedSections, []);
+      assert.deepEqual(resubmit.body.application.flaggedFields, []);
     });
 
   });
