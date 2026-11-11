@@ -1,4 +1,4 @@
-# IEM Admissions
+# IEM Admission System
 
 An admissions portal with a Vite/React frontend and an Express API.
 
