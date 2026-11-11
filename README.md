@@ -69,6 +69,10 @@ After applying the migrations, run `npm run migrate:auth-users --prefix .\server
 
 Keep `SUPABASE_SECRET_KEY` server-side only. The publishable key is used for public Auth operations; the secret key is used by the API to manage Auth accounts.
 
+## Application corrections
+
+When an administrator requests corrections, they select the affected sections and specific fields, with an optional reviewer comment. Applicants see the selected fields highlighted in the form and can update them before resubmitting.
+
 ## Payment note
 
 The current **Pay now** action is a development-only simulated payment. It records a demo receipt and updates an approved application, but does not transfer money or connect to a real payment gateway. Configure and implement server-side gateway verification before accepting real payments.
