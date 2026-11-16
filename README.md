@@ -45,6 +45,8 @@ The frontend proxies `/api` requests to the API on port `5000`.
 
 ## Vercel deployment
 
+Live app: <https://iem-admission-portal-delta.vercel.app>
+
 The root `vercel.json` configures the `client` Vite service and `server` Express service in one Vercel project. `/api/*` is routed to the API, and all other paths are routed to the frontend. Both services are public on those paths; the application has no server-to-server service calls, so no service bindings are needed. Configure the server's database and authentication environment variables in Vercel, then use `vercel dev` to test the services locally.
 
 ## Running services individually
