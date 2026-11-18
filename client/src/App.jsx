@@ -1652,7 +1652,7 @@ function ReviewGroup({ title, stepIndex, rows, onEdit }) {
   );
 }
 
-function ApplicationPage({ onNavigate, applicantName, application, setApplication, notify, onApplicationDirty, onApplicationSaved, getApplicationEditVersion }) {
+function ApplicationPage({ onNavigate, applicantName, applicantIdentity, application, setApplication, notify, onApplicationDirty, onApplicationSaved, getApplicationEditVersion }) {
   const [step, setStep] = useState(() => (
     application.status === 'Correction Requested' ? getCorrectionStepIndex(application) : 0
   ));
@@ -1916,11 +1916,11 @@ function ApplicationPage({ onNavigate, applicantName, application, setApplicatio
           <div className="form-section">
             <h3 className="form-section__title"><User size={20} /> Candidate details</h3>
             <div className="form-grid">
-              <Field label="Full Name *" name="fullName" hint="In full — initials and titles such as Mr, Ms are not allowed." placeholder="Enter your full name" value={application.fullName || ''} onChange={update} icon={User} maxLength={100} required />
+              <Field label="Full Name *" name="fullName" hint="Pre-filled from your registered account. You can update it here." placeholder="Enter your full name" value={application.fullName || applicantIdentity?.fullName || ''} onChange={update} icon={User} maxLength={100} required />
               <SelectField label="Gender *" name="gender" value={application.gender} onChange={update} placeholder="Select gender" options={['Male', 'Female']} required />
               <Field label="Date of Birth *" name="dob" type="date" min={DOB_MIN} max={DOB_MAX} value={application.dob || ''} onChange={update} icon={CalendarBlank} required />
-              <Field label="Email Address *" name="email" placeholder="Enter your email" type="email" value={application.email || ''} onChange={update} required />
-              <Field label="Student Mobile *" name="mobile" placeholder="10-digit mobile number" type="tel" inputMode="numeric" pattern="[0-9]{10}" value={application.mobile || ''} onChange={update} icon={MapPin} required />
+              <Field label="Email Address *" name="email" placeholder="Enter your email" type="email" value={application.email || applicantIdentity?.email || ''} onChange={update} required />
+              <Field label="Student Mobile *" name="mobile" placeholder="10-digit mobile number" type="tel" inputMode="numeric" pattern="[0-9]{10}" value={application.mobile || applicantIdentity?.mobile || ''} onChange={update} icon={MapPin} required />
               <SelectField label="Reservation Category *" name="category" value={application.category} onChange={update} placeholder="Select category" options={['General', 'OBC', 'SC', 'ST', 'EWS']} required />
             </div>
           </div>
@@ -2866,6 +2866,7 @@ function AppContent() {
     if (page === 'application') content = <ApplicationPage
       onNavigate={go}
       applicantName={applicantName}
+      applicantIdentity={auth.user}
       application={application}
       setApplication={setApplication}
       notify={notify}
