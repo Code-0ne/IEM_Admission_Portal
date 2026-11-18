@@ -3,7 +3,29 @@
   "services": {
     "client": {
       "root": "client",
-      "framework": "vite"
+      "framework": "vite",
+      "routes": [
+        {
+          "src": "/admin/?$",
+          "transforms": [
+            {
+              "type": "request.path",
+              "op": "set",
+              "args": "/"
+            }
+          ]
+        },
+        {
+          "src": "/admin/.*",
+          "transforms": [
+            {
+              "type": "request.path",
+              "op": "set",
+              "args": "/"
+            }
+          ]
+        }
+      ]
     },
     "server": {
       "root": "server",
@@ -20,15 +42,13 @@
     {
       "source": "/admin",
       "destination": {
-        "service": "client",
-        "path": "/index.html"
+        "service": "client"
       }
     },
     {
       "source": "/admin/(.*)",
       "destination": {
-        "service": "client",
-        "path": "/index.html"
+        "service": "client"
       }
     },
     {
