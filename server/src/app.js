@@ -60,7 +60,7 @@ app.get('/api/health', async (req, res, next) => {
 // Root / API info endpoint
 app.get('/api', (req, res) => {
   res.json({
-    name: 'UEM Admission Management System API',
+    name: 'IEM Admission Management System API',
     version: '0.1.0',
     documentation: '/api/docs',
   });

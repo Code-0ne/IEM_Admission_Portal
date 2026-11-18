@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "UEM Admission Management System — Express API",
+  "description": "IEM Admission Management System — Express API",
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",

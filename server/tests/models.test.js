@@ -197,10 +197,10 @@ describe('Domain Model & Constraint Tests', () => {
   });
 
   describe('Application Workflow & Numbering Constraints', () => {
-    it('should validate the sequential application number format (UEM-YYYY-NNNNN)', () => {
-      assert.equal(isValidApplicationNumber('UEM-2026-00001'), true);
-      assert.equal(isValidApplicationNumber('UEM-2026-99999'), true);
-      assert.equal(isValidApplicationNumber('UEM-26-001'), false);
+    it('should validate the sequential application number format (IEM-YYYY-NNNNN)', () => {
+      assert.equal(isValidApplicationNumber('IEM-2026-00001'), true);
+      assert.equal(isValidApplicationNumber('IEM-2026-99999'), true);
+      assert.equal(isValidApplicationNumber('IEM-26-001'), false);
       assert.equal(isValidApplicationNumber('APP-2026-00001'), false);
     });
 

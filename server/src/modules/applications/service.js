@@ -34,16 +34,16 @@ export function resetApplicationStore() {
 }
 
 /**
- * Generate sequential Application Number: UEM-YYYY-00001
+ * Generate sequential Application Number: IEM-YYYY-00001
  */
 export function generateApplicationNumber() {
   const year = new Date().getFullYear();
   const seq = String(inMemoryStore.sequence++).padStart(5, '0');
-  return `UEM-${year}-${seq}`;
+  return `IEM-${year}-${seq}`;
 }
 
 export async function getNextApplicationNumber(client, year = new Date().getFullYear()) {
-  const prefix = `UEM-${year}-`;
+  const prefix = `IEM-${year}-`;
   const { data, error } = await client
     .from('applications')
     .select('application_no')
@@ -58,7 +58,7 @@ export async function getNextApplicationNumber(client, year = new Date().getFull
 
   let sequence = 0;
   if (data?.application_no) {
-    const match = data.application_no.match(new RegExp(`^UEM-${year}-(\\d+)$`));
+    const match = data.application_no.match(new RegExp(`^IEM-${year}-(\\d+)$`));
     if (!match || !Number.isSafeInteger(Number(match[1]))) {
       throw new InternalServerError('Could not allocate application number: latest existing number is invalid.');
     }

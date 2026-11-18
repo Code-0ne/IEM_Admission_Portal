@@ -70,8 +70,8 @@ export const APPLICATION_STATUSES = [
 
 export const applicationStatusSchema = z.enum(APPLICATION_STATUSES);
 
-// 6. Application Number regex: UEM-<YEAR>-<5-DIGIT-SEQUENCE>
-export const APPLICATION_NO_REGEX = /^UEM-\d{4}-\d{5}$/;
+// 6. Application Number regex: IEM-<YEAR>-<5-DIGIT-SEQUENCE>
+export const APPLICATION_NO_REGEX = /^IEM-\d{4}-\d{5}$/;
 
 export function isValidApplicationNumber(appNo) {
   return typeof appNo === 'string' && APPLICATION_NO_REGEX.test(appNo);

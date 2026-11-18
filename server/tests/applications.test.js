@@ -113,7 +113,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
       order() { return this; },
       limit() { return this; },
       async maybeSingle() {
-        return { data: { application_no: `UEM-${year}-00041` }, error: null };
+        return { data: { application_no: `IEM-${year}-00041` }, error: null };
       },
     };
     const client = {
@@ -123,7 +123,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
       },
     };
 
-    assert.equal(await getNextApplicationNumber(client, year), `UEM-${year}-00042`);
+    assert.equal(await getNextApplicationNumber(client, year), `IEM-${year}-00042`);
   });
 
   it('publishes the selected booking amounts for every B.Tech stream', () => {
@@ -395,7 +395,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
       assert.equal(submitRes.status, 200);
       assert.equal(submitRes.body.success, true);
       assert.equal(submitRes.body.application.status, 'Submitted');
-      assert.ok(submitRes.body.applicationNo.startsWith('UEM-'));
+      assert.ok(submitRes.body.applicationNo.startsWith('IEM-'));
 
       const applicantView = await request(app)
         .get('/api/applications/me')

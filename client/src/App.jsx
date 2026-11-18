@@ -218,8 +218,8 @@ const APPLICANT_NAV = [
 
 const ADMISSION_OFFICES = [
   { name: 'IEM Ashram Building', address: 'Ashram Building, GN-34/2, Sector V, Salt Lake, Kolkata 700091', phone: '8010700500 / 8069795500' },
-  { name: 'UEM Building, New Town', address: 'University Area, Plot No. III, New Town, Kolkata 700160', phone: '8010700500' },
-  { name: 'UEM Jaipur', address: 'Gurukul, Sikar Road, Jaipur, Rajasthan 303807', phone: '—' },
+  { name: 'IEM Building, New Town', address: 'University Area, Plot No. III, New Town, Kolkata 700160', phone: '8010700500' },
+  { name: 'IEM Jaipur', address: 'Gurukul, Sikar Road, Jaipur, Rajasthan 303807', phone: '—' },
 ];
 
 const FAQS = [
@@ -902,7 +902,7 @@ function ProcessPage({ onNavigate }) {
             </div>
             <div className="info-panel">
               <strong><MapPin size={16} /> Admission offices</strong>
-              <p>Admission offices exist only at the IEM Ashram Building (Salt Lake), the UEM Building (New Town) and UEM Jaipur. Treat any other "office" asking for payment as fraud.</p>
+              <p>Admission offices exist only at the IEM Ashram Building (Salt Lake), the IEM Building (New Town) and IEM Jaipur. Treat any other "office" asking for payment as fraud.</p>
             </div>
           </div>
         </div>
@@ -1342,7 +1342,14 @@ function ApplicantLayout({ active, onNavigate, applicantName, notifications, onR
               <NotificationsPanel items={notifications} onOpen={openNotification} onClose={() => setShowNotifications(false)} onMarkAllRead={onMarkAllRead} />
             )}
           </div>
-          <span className="user-chip"><span className="user-chip__avatar"><User size={16} /></span>{applicantName}</span>
+          <button
+            aria-label="Open profile"
+            className="user-chip"
+            onClick={() => onNavigate('profile')}
+            type="button"
+          >
+            <span className="user-chip__avatar"><User size={16} /></span>{applicantName}
+          </button>
         </div>
       </header>
       <div className="app-body app-body--wide">
@@ -2527,7 +2534,7 @@ function findAiAnswer(question) {
     return 'Applications are open for the 2026-27 session. Deadlines differ by programme and are announced by the admission office — check the official announcements or contact admissions@iem.edu.in for exact dates.';
   }
   if (/(contact|phone|email|office|address|campus)/.test(q)) {
-    return 'Admission offices are at the IEM Ashram Building (Salt Lake), the UEM Building (New Town) and UEM Jaipur. Phone 8010700500 / 8069795500, email admissions@iem.edu.in.';
+    return 'Admission offices are at the IEM Ashram Building (Salt Lake), the IEM Building (New Town) and IEM Jaipur. Phone 8010700500 / 8069795500, email admissions@iem.edu.in.';
   }
   if (/(course|programme|program|stream|recommend|which)/.test(q)) {
     return 'We offer UG programmes (B.Tech with 13 streams, BHM, BBA, BCA, BBA LLB) and PG programmes (MCA, MBA, MBA Global Management, M.Tech). Tell me your interests and I can suggest directions — the course recommender is advisory only.';

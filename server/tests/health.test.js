@@ -20,7 +20,7 @@ describe('API Health and Routing Tests', () => {
     const res = await request(app).get('/api');
 
     assert.equal(res.status, 200);
-    assert.equal(res.body.name, 'UEM Admission Management System API');
+    assert.equal(res.body.name, 'IEM Admission Management System API');
     assert.equal(res.body.version, '0.1.0');
   });
 
