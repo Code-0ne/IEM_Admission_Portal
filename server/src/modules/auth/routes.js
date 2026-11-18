@@ -21,6 +21,27 @@ function setSessionCookie(res, token) {
   });
 }
 
+async function handleLogin(req, res, next, requiredRole) {
+  try {
+    const { identifier, password } = req.body;
+    if (!identifier || !password) {
+      throw new BadRequestError('Email/mobile and password are required');
+    }
+
+    const result = await authService.login({ identifier, password, requiredRole });
+    setSessionCookie(res, result.token);
+
+    res.status(200).json({
+      success: true,
+      message: 'Signed in successfully',
+      user: result.user,
+      token: result.token,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 /**
  * POST /api/auth/register
  */
@@ -44,26 +65,8 @@ authRouter.post('/register', authRateLimiter, async (req, res, next) => {
 /**
  * POST /api/auth/login
  */
-authRouter.post('/login', authRateLimiter, async (req, res, next) => {
-  try {
-    const { identifier, password } = req.body;
-    if (!identifier || !password) {
-      throw new BadRequestError('Email/mobile and password are required');
-    }
-
-    const result = await authService.login({ identifier, password });
-    setSessionCookie(res, result.token);
-
-    res.status(200).json({
-      success: true,
-      message: 'Signed in successfully',
-      user: result.user,
-      token: result.token, // Return token for API clients / testing
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+authRouter.post('/login', authRateLimiter, (req, res, next) => handleLogin(req, res, next, 'applicant'));
+authRouter.post('/admin/login', authRateLimiter, (req, res, next) => handleLogin(req, res, next, 'admin'));
 
 /**
  * POST /api/auth/logout

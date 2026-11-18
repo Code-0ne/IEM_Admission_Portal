@@ -58,7 +58,7 @@ describe('Phase 3 — Applications & Documents Module Tests', () => {
     setInMemoryUserRole(adminId, 'admin');
 
     const adminLogin = await request(app)
-      .post('/api/auth/login')
+      .post('/api/auth/admin/login')
       .send({ identifier: adminData.email, password: adminData.password });
     adminCookie = adminLogin.headers['set-cookie']?.[0] || '';
   });

@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const result = await login({ identifier: identifier.trim(), password });
+      const result = await login({ identifier: identifier.trim(), password, portal: 'admin' });
       if (result?.user?.role !== 'admin') {
         await logout();
         setError('This account does not have administrator access.');

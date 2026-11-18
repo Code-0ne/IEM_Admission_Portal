@@ -243,13 +243,26 @@ describe('Phase 2 — Authentication & Access Control Tests', () => {
           consent: true,
         });
 
+      const applicantPortalLogin = await request(app)
+        .post('/api/auth/admin/login')
+        .send({ identifier: 'admin.user@iem.edu.in', password: 'AdminPassword@123' });
+      assert.equal(applicantPortalLogin.status, 403);
+      assert.equal(applicantPortalLogin.headers['set-cookie'], undefined);
+
       // Elevate user role to admin in store
       const { setInMemoryUserRole } = await import('../src/modules/auth/service.js');
       setInMemoryUserRole(reg.body.user.id, 'admin');
 
-      // Login as admin
-      const login = await request(app)
+      const studentPortalLogin = await request(app)
         .post('/api/auth/login')
+        .send({ identifier: 'admin.user@iem.edu.in', password: 'AdminPassword@123' });
+      assert.equal(studentPortalLogin.status, 403);
+      assert.equal(studentPortalLogin.body.error.message, 'Administrator accounts must sign in through the admin portal.');
+      assert.equal(studentPortalLogin.headers['set-cookie'], undefined);
+
+      // Admins must use the dedicated endpoint.
+      const login = await request(app)
+        .post('/api/auth/admin/login')
         .send({ identifier: 'admin.user@iem.edu.in', password: 'AdminPassword@123' });
 
       assert.equal(login.status, 200);

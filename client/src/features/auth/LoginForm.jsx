@@ -26,6 +26,7 @@ export function LoginForm({ onNavigate, onLogin }) {
       const res = await login({
         identifier: identifier.trim(),
         password,
+        portal: 'applicant',
       });
 
       if (onLogin && res?.user) {
@@ -58,7 +59,7 @@ export function LoginForm({ onNavigate, onLogin }) {
       <section className="auth-card auth-card--login">
         <div className="auth-card__heading">
           <h2>Welcome back</h2>
-          <p>Sign in with your email or mobile number. Admin accounts open the admin portal automatically.</p>
+          <p>Sign in with your email or mobile number to continue your student application.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>

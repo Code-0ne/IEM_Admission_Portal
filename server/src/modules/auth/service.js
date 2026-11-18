@@ -4,6 +4,7 @@ import config from '../../config.js';
 import {
   BadRequestError,
   UnauthorizedError,
+  ForbiddenError,
   TooManyRequestsError,
   ConflictError,
   NotFoundError,
@@ -88,6 +89,15 @@ export function sanitizeUser(user) {
     createdAt: safeUser.created_at || safeUser.createdAt,
     updatedAt: safeUser.updated_at || safeUser.updatedAt,
   };
+}
+
+function assertLoginRole(user, requiredRole) {
+  if ((user.role || 'applicant') === requiredRole) return;
+
+  const message = requiredRole === 'admin'
+    ? 'This account does not have administrator access.'
+    : 'Administrator accounts must sign in through the admin portal.';
+  throw new ForbiddenError(message);
 }
 
 export class AuthService {
@@ -242,7 +252,7 @@ export class AuthService {
   /**
    * Authenticate user with email or mobile + password
    */
-  async login({ identifier, password }) {
+  async login({ identifier, password, requiredRole = 'applicant' }) {
     if (!identifier || !password) {
       throw new BadRequestError('Email/mobile and password are required');
     }
@@ -300,6 +310,8 @@ export class AuthService {
         }
         throw new UnauthorizedError('Invalid email/mobile or password');
       }
+
+      assertLoginRole(user, requiredRole);
 
       // Reset login counters on success
       const { error: counterError } = await client
@@ -369,6 +381,8 @@ export class AuthService {
       }
       throw new UnauthorizedError('Invalid email/mobile or password');
     }
+
+    assertLoginRole(user, requiredRole);
 
     // Successful login: reset counters
     user.failed_login_attempts = 0;

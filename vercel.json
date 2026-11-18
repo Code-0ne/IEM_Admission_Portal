@@ -20,7 +20,15 @@
     {
       "source": "/admin",
       "destination": {
-        "service": "client"
+        "service": "client",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": {
+        "service": "client",
+        "path": "/index.html"
       }
     },
     {

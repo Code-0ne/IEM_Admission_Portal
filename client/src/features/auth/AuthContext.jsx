@@ -66,8 +66,9 @@ export function AuthProvider({ children }) {
     return res;
   };
 
-  const login = async ({ identifier, password }) => {
-    const res = await http.post('/auth/login', { identifier, password });
+  const login = async ({ identifier, password, portal = 'applicant' }) => {
+    const endpoint = portal === 'admin' ? '/auth/admin/login' : '/auth/login';
+    const res = await http.post(endpoint, { identifier, password });
     if (res?.user) {
       authRequestId.current += 1;
       setUser(res.user);
